@@ -173,7 +173,7 @@ def scrape_list(har, cookies_json, page_id):
                         caught_up = True
                         break
 
-                    data = [image, title, id, subtitle_text, url]
+                    data = [image, title, id, subtitle_text, url, today]
                     new_data.append(data)
                     print(f"Added Profile - {title}")
 
