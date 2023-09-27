@@ -2,15 +2,15 @@ import time
 import json
 import csv
 from random import randint
-
 import requests
 import datetime
+
+import schedule
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.alert import Alert
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from seleniumwire import webdriver as wiredriver
-
 
 def dismiss_alert(driver):
     try:
@@ -20,7 +20,6 @@ def dismiss_alert(driver):
     except:
         pass
 
-
 def init_chromedriver():
     chrome_options = Options()
     chrome_options.add_argument('--no-sandbox')
@@ -29,7 +28,6 @@ def init_chromedriver():
 
     driver = wiredriver.Chrome(options=chrome_options, seleniumwire_options={'enable_har': True})
     return driver
-
 
 def get_har_file(driver, page_id, cookies):
     driver.get("https://www.facebook.com")
@@ -58,7 +56,6 @@ def get_har_file(driver, page_id, cookies):
         har_file.write(str(har))
 
     return har
-
 
 def get_continuation_token(har):
     try:
@@ -89,7 +86,6 @@ def get_continuation_token(har):
         print(e)
         return None
 
-
 def scrape_list(har, cookies_json, page_id):
     cursor, param_string = get_continuation_token(har)
     first_cursor = cursor
@@ -104,15 +100,19 @@ def scrape_list(har, cookies_json, page_id):
     yesterday = yesterday.strftime("%Y-%m-%d")
     today = datetime.datetime.now().strftime("%Y-%m-%d")
 
-    followers = 'empty-string-because-no-errors'
+    followers = set()  # Use a set to store followers for faster membership check
+
     try:
-        with open(f"followers_{yesterday}.csv", "r", encoding='utf-8') as f:
-          followers = f.read()
-    except:
+        with open("followers.csv", "r", encoding='utf-8') as f:
+            csv_reader = csv.reader(f)
+            next(csv_reader)  # Skip the header row
+            for row in csv_reader:
+                followers.add(row[2])  # Assuming 'id' is in the third column
+    except FileNotFoundError:
         pass
 
     cursor = cursor
-    with open(f"followers_{today}.csv", "a", newline='', encoding='utf-8') as csv_file:
+    with open("followers.csv", "a", newline='', encoding='utf-8') as csv_file:
         csv_writer = csv.writer(csv_file)
         caught_up = False
         while True:
@@ -173,9 +173,11 @@ def scrape_list(har, cookies_json, page_id):
                         caught_up = True
                         break
 
-                    data = [image, title, id, subtitle_text, url, today]
-                    new_data.append(data)
-                    print(f"Added Profile - {title}")
+                    if id not in followers:  # Check if the follower is not already in the CSV
+                        followers.add(id)  # Add the new follower to the set
+                        data = [image, title, id, subtitle_text, url, today]
+                        new_data.append(data)
+                        print(f"Added Profile - {title}")
 
             if len(new_data) == 0:
                 print("No new followers found")
@@ -183,7 +185,7 @@ def scrape_list(har, cookies_json, page_id):
 
             existing_data.extend(new_data)
 
-            with open(f"followers_{today}.csv", "w", newline='', encoding='utf-8') as csv_file:
+            with open("followers.csv", "a+", newline='', encoding='utf-8') as csv_file:
                 csv_writer = csv.writer(csv_file)
                 csv_writer.writerows(existing_data)
 
@@ -191,84 +193,91 @@ def scrape_list(har, cookies_json, page_id):
             cursor = continuation_token
 
 
-driver = init_chromedriver()
-cookies = [
-  {
-    "name": "datr",
-    "value": "X_cPZaBYqXNFYY5JnuGYYnl2",
-    "domain": ".facebook.com",
-    "path": "/",
-    "expires": 1730105190,
-    "httpOnly": True,
-    "secure": True
-  },
-  {
-    "name": "sb",
-    "value": "o2kBZecPI7AgppvB2y-BFsQm",
-    "domain": ".facebook.com",
-    "path": "/",
-    "expires": 1730105190,
-    "httpOnly": True,
-    "secure": True
-  },
-  {
-    "name": "i_user",
-    "value": "61550964032031",
-    "domain": ".facebook.com",
-    "path": "/",
-    "expires": 1727081198,
-    "httpOnly": False,
-    "secure": True
-  },
-  {
-    "name": "dpr",
-    "value": "0.8955223880597015",
-    "domain": ".facebook.com",
-    "path": "/",
-    "expires": 1696152756,
-    "httpOnly": False,
-    "secure": True
-  },
-  {
-    "name": "c_user",
-    "value": "100094654806004",
-    "domain": ".facebook.com",
-    "path": "/",
-    "expires": 1727084752,
-    "httpOnly": False,
-    "secure": True
-  },
-  {
-    "name": "xs",
-    "value": "16%3A1ugeF4uVYC8fkQ%3A2%3A1695545190%3A-1%3A-1%3A%3AAcVUVUryS4Nvi0CFaMCCoHKBh4H9e59mFd0rqpkZJw",
-    "domain": ".facebook.com",
-    "path": "/",
-    "expires": 1727084752,
-    "httpOnly": True,
-    "secure": True
-  },
-  {
-    "name": "fr",
-    "value": "09CRjiF1zhgL2lfnx.AWU0HT_b1HKz8sMq07mUnQ2xPq0.BlEAVR.8n.AAA.0.0.BlEAVR.AWVQDHtpfhY",
-    "domain": ".facebook.com",
-    "path": "/",
-    "expires": 1703324752,
-    "httpOnly": True,
-    "secure": True
-  },
-  {
-    "name": "wd",
-    "value": "1525x729",
-    "domain": ".facebook.com",
-    "path": "/",
-    "expires": 1696158096,
-    "httpOnly": False,
-    "secure": True,
-    "sameSite": "Lax"
-  }
-]
 
-page_id = "61550964032031"
-har = get_har_file(driver, page_id, cookies)
-driver.quit()
-scrape_list(har, cookies, page_id)
+def job():
+    driver = init_chromedriver()
+    cookies = [
+        {
+            "name": "datr",
+            "value": "X_cPZaBYqXNFYY5JnuGYYnl2",
+            "domain": ".facebook.com",
+            "path": "/",
+            "expires": 1730105190,
+            "httpOnly": True,
+            "secure": True
+        },
+        {
+            "name": "sb",
+            "value": "o2kBZecPI7AgppvB2y-BFsQm",
+            "domain": ".facebook.com",
+            "path": "/",
+            "expires": 1730105190,
+            "httpOnly": True,
+            "secure": True
+        },
+        {
+            "name": "i_user",
+            "value": "61550964032031",
+            "domain": ".facebook.com",
+            "path": "/",
+            "expires": 1727081198,
+            "httpOnly": False,
+            "secure": True
+        },
+        {
+            "name": "dpr",
+            "value": "0.8955223880597015",
+            "domain": ".facebook.com",
+            "path": "/",
+            "expires": 1696152756,
+            "httpOnly": False,
+            "secure": True
+        },
+        {
+            "name": "c_user",
+            "value": "100094654806004",
+            "domain": ".facebook.com",
+            "path": "/",
+            "expires": 1727084752,
+            "httpOnly": False,
+            "secure": True
+        },
+        {
+            "name": "xs",
+            "value": "16%3A1ugeF4uVYC8fkQ%3A2%3A1695545190%3A-1%3A-1%3A%3AAcVUVUryS4Nvi0CFaMCCoHKBh4H9e59mFd0rqpkZJw",
+            "domain": ".facebook.com",
+            "path": "/",
+            "expires": 1727084752,
+            "httpOnly": True,
+            "secure": True
+        },
+        {
+            "name": "fr",
+            "value": "09CRjiF1zhgL2lfnx.AWU0HT_b1HKz8sMq07mUnQ2xPq0.BlEAVR.8n.AAA.0.0.BlEAVR.AWVQDHtpfhY",
+            "domain": ".facebook.com",
+            "path": "/",
+            "expires": 1703324752,
+            "httpOnly": True,
+            "secure": True
+        },
+        {
+            "name": "wd",
+            "value": "1525x729",
+            "domain": ".facebook.com",
+            "path": "/",
+            "expires": 1696158096,
+            "httpOnly": False,
+            "secure": True,
+            "sameSite": "Lax"
+        }
+    ]
+    page_id = "61550964032031"
+    har = get_har_file(driver, page_id, cookies)
+    driver.quit()
+    scrape_list(har, cookies, page_id)
+
+schedule.every().day.at("00:00").do(job)
+
+while True:
+    schedule.run_pending()
+    time.sleep(1)
